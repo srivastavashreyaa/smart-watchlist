@@ -99,14 +99,6 @@ history over time.
   is more than sufficient for a "check in occasionally" watchlist and
   avoids the complexity of a persistent connection for this scope.
 
-## 100-word product pitch (draft — edit in your own words before submitting)
+## 100-word product pitch
 
-Most watchlists show you a price. This one decides whether that price
-actually deserves your attention. Each stock gets its own volatility
-baseline, computed from its own recent history — a 2% move means
-something different for a blue-chip than a small-cap, so a flat alert
-threshold is the wrong model. The app tracks what you personally last
-saw (not just "today's change"), flags 52-week high/low crossings, and
-visually separates signal from noise instead of a uniform grid. Prices
-are cached and shared across users to respect free-tier API limits,
-with graceful stale-data fallback rather than errors.
+Most watchlists just show you a price. This one decides whether that price actually deserves your attention. Every stock gets its own volatility baseline computed from its own recent history, because a 2% move means something different for a blue-chip than a small-cap — a flat alert threshold is the wrong model. It tracks what I personally last saw for each stock, not just today's change, so gradual moves over days I didn't check still surface. It also flags 52-week high/low crossings and calls out top movers. Prices are cached and shared across users to respect free-tier API limits, with stale data served gracefully instead of errors.
