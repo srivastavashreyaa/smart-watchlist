@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Watchlist</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0A0D13; --surface: #12161F; --surface-raised: #171C27; --header-bg: #0E1219;
+    --border: #232935; --text: #E9EBEF; --text-muted: #7B8494;
+    --up: #3FCF8E; --down: #F0554A; --amber: #F0B429; --orange: #E8862B; --red: #E0453A;
+  }
+  * { box-sizing: border-box; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; line-height: 1.5; position: relative; min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(700px circle at 10% 0%, rgba(240,180,41,0.06), transparent 55%),
+      radial-gradient(600px circle at 90% 15%, rgba(63,207,142,0.05), transparent 55%),
+      radial-gradient(800px circle at 50% 100%, rgba(224,69,58,0.04), transparent 55%);
+    animation: driftGlow 24s ease-in-out infinite alternate;
+  }
+  @keyframes driftGlow { from { transform: translate(0,0) scale(1); } to { transform: translate(2%,-2%) scale(1.05); } }
+
+  /* Top bar */
+  .topbar {
+    position: relative; z-index: 1; background: var(--header-bg); border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+  .brand { font-family: 'Newsreader', serif; font-style: italic; font-weight: 600; font-size: 21px; }
+  .brand .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--up); margin-right: 8px; box-shadow: 0 0 0 0 rgba(63,207,142,0.5); animation: pulse 2.4s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(63,207,142,0.45); } 70% { box-shadow: 0 0 0 6px rgba(63,207,142,0); } 100% { box-shadow: 0 0 0 0 rgba(63,207,142,0); } }
+
+  .topbar-stats { display: flex; gap: 22px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; }
+  .topbar-stats .stat b { font-size: 15px; display: block; }
+  .topbar-stats .stat span { color: var(--text-muted); font-family: 'IBM Plex Sans', sans-serif; font-size: 10.5px; }
+
+  /* Ticker */
+  .ticker-wrap { position: relative; z-index: 1; background: #0C0F15; border-bottom: 1px solid var(--border); overflow: hidden; white-space: nowrap; padding: 7px 0; }
+  .ticker-track { display: inline-flex; animation: scrollTicker 26s linear infinite; }
+  @keyframes scrollTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .ticker-item { font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 0 18px; color: var(--text-muted); border-right: 1px solid var(--border); }
+  .ticker-item .sym { color: var(--text); font-weight: 600; margin-right: 5px; }
+  .ticker-item.up { color: var(--up); } .ticker-item.down { color: var(--down); }
+
+  .layout { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 300px 1fr; gap: 20px; padding: 22px 20px 80px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } .detail-panel { position: static !important; } }
+
+  /* Detail panel */
+  .detail-panel {
+    position: sticky; top: 20px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; min-height: 320px;
+  }
+  .detail-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 60px 10px; }
+  .detail-sym { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 18px; }
+  .detail-name { font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px; }
+  .detail-price { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 600; }
+  .detail-change { font-family: 'IBM Plex Mono', monospace; font-size: 13px; margin-top: 2px; }
+  .chart-wrap { margin: 16px 0 6px; height: 90px; }
+  .chart-wrap svg { width: 100%; height: 100%; overflow: visible; }
+  .chart-label { font-size: 10.5px; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 4px; }
+
+  .detail-signal { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .detail-signal .reason { font-size: 13px; color: var(--amber); line-height: 1.5; }
+  .detail-gauge-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .detail-gauge { --pct:0; --gc:var(--amber); width: 40px; height: 40px; border-radius: 50%; background: conic-gradient(var(--gc) calc(var(--pct)*1%), var(--border) 0); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .detail-gauge .in { width: 30px; height: 30px; border-radius: 50%; background: var(--surface); display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:10px; }
+  .detail-52w { margin-top: 14px; }
+  .range-track-d { position: relative; height: 5px; background: var(--border); border-radius: 3px; margin: 5px 0; }
+  .range-fill-d { position: absolute; top: -3px; width: 3px; height: 11px; background: var(--amber); transform: translateX(-50%); border-radius: 2px; }
+  .range-labels-d { display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--text-muted); }
+
+  /* Right: add + table */
+  .right-col { min-width: 0; }
+  .error-banner { background: rgba(224,69,58,0.12); border: 1px solid var(--red); color: #ff9b93; padding: 9px 13px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; display: none; }
+  .add-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .add-row input { flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; }
+  .add-row input:focus { outline: none; border-color: var(--amber); }
+  .add-row button { background: var(--amber); color: #1a1400; border: none; padding: 10px 18px; border-radius: 7px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+  .add-row button:hover { filter: brightness(1.08); }
+  .add-row button:disabled { opacity: 0.5; }
+
+  .grid-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .grid-header, .grid-row { display: grid; grid-template-columns: 22px minmax(110px,1.6fr) 85px 85px 100px 1.2fr 40px; gap: 10px; align-items: center; padding: 10px 14px; }
+  .grid-header { background: var(--header-bg); font-size: 10px; color: var(--text-muted); border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
+  .grid-header span:hover { color: var(--text); }
+  .grid-header .sort-active { color: var(--amber); }
+  .grid-row { border-bottom: 1px solid var(--border); background: var(--surface); opacity: 0; animation: revealIn 0.4s ease forwards; transition: background 0.15s ease; cursor: pointer; }
+  .grid-row:last-child { border-bottom: none; }
+  .grid-row:hover { background: var(--surface-raised); }
+  .grid-row.selected { background: var(--surface-raised); box-shadow: inset 3px 0 0 var(--amber); }
+  .grid-row.attn { background: linear-gradient(90deg, var(--row-glow, rgba(240,180,41,0.08)), transparent 40%); border-left: 3px solid var(--row-accent, var(--amber)); }
+  .grid-row.flash { animation: flashBg 0.9s ease; }
+  @keyframes flashBg { 0% { background: rgba(240,180,41,0.18); } 100% {} }
+  @keyframes revealIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+
+  .gauge-mini { --pct:0; --gc:var(--amber); width: 22px; height: 22px; border-radius: 50%; background: conic-gradient(var(--gc) calc(var(--pct)*1%), var(--border) 0); display:flex; align-items:center; justify-content:center; }
+  .gauge-mini .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--surface); }
+  .sym-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .sym-cell .sym { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13.5px; }
+  .sym-cell .nm { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell-num { font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right; }
+  .cell-pct { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; text-align: right; }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .range-mini { display: flex; flex-direction: column; gap: 2px; }
+  .range-mini .lbl { font-size: 9px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+  .range-track-mini { position: relative; height: 4px; background: var(--border); border-radius: 2px; }
+  .range-fill-mini { position: absolute; top: -2px; width: 2px; height: 8px; background: var(--amber); transform: translateX(-50%); border-radius: 1px; }
+  .reason-cell { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grid-row.attn .reason-cell { color: var(--row-accent, var(--amber)); font-weight: 500; }
+  .badges { display: flex; gap: 4px; margin-top: 2px; }
+  .mover-badge { font-size: 9px; background: var(--amber); color: #1a1400; border-radius: 3px; padding: 1px 4px; font-weight: 600; }
+  .stale-badge { font-size: 9px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; }
+  .remove-btn { background: none; border: none; color: var(--text-muted); font-size: 15px; cursor: pointer; padding: 2px 6px; }
+  .remove-btn:hover { color: var(--down); }
+  .section-tag { padding: 8px 14px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); background: var(--header-bg); border-bottom: 1px solid var(--border); }
+  .section-tag.attn-tag { color: var(--amber); }
+  .empty-state { text-align: center; color: var(--text-muted); padding: 44px 20px; font-size: 13.5px; }
+  .refresh-note { text-align: center; color: var(--text-muted); font-size: 11.5px; margin-top: 16px; }
+
+  @media (max-width: 700px) {
+    .topbar-stats { display: none; }
+    .grid-header, .grid-row { grid-template-columns: 18px 1.3fr 70px 70px 44px; }
+    .grid-header span:nth-child(5), .grid-row > :nth-child(5) { display: none; }
+    .grid-header span:nth-child(6), .grid-row > :nth-child(6) { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>Smart Watchlist</div>
+    <div class="topbar-stats" id="topbarStats"></div>
+  </div>
+  <div class="ticker-wrap"><div class="ticker-track" id="tickerTrack"></div></div>
+
+  <div class="layout">
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-empty">Click any stock in the list to see its chart and signal detail here.</div>
+    </div>
+
+    <div class="right-col">
+      <div class="error-banner" id="errorBanner"></div>
+
+      <div class="add-row">
+        <input type="text" id="symbolInput" placeholder="Add a symbol, e.g. AAPL or TCS.NS" autocomplete="off">
+        <button id="addBtn">Add</button>
+      </div>
+
+      <div id="content"><div class="empty-state">Loading your watchlist…</div></div>
+      <p class="refresh-note" id="refreshNote"></p>
+    </div>
+  </div>
+
+<script>
+  const USER_ID_KEY = 'smart-watchlist-user-id';
+  function getUserId() {
+    let id = localStorage.getItem(USER_ID_KEY);
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem(USER_ID_KEY, id); }
+    return id;
+  }
+  const userId = getUserId();
+
+  const contentEl = document.getElementById('content');
+  const topbarStatsEl = document.getElementById('topbarStats');
+  const tickerTrackEl = document.getElementById('tickerTrack');
+  const errorBanner = document.getElementById('errorBanner');
+  const refreshNote = document.getElementById('refreshNote');
+  const symbolInput = document.getElementById('symbolInput');
+  const addBtn = document.getElementById('addBtn');
+  const detailPanel = document.getElementById('detailPanel');
+
+  let lastPrices = {};
+  let sortKey = 'dayChangePercent';
+  let sortDir = -1;
+  let selectedSymbol = null;
+  let latestItems = [];
+
+  function showError(msg) {
+    errorBanner.textContent = msg;
+    errorBanner.style.display = 'block';
+    setTimeout(() => errorBanner.style.display = 'none', 5000);
+  }
+  function fmtPrice(p) { return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtPct(p) { const s = p > 0 ? '+' : ''; return `${s}${p.toFixed(2)}%`; }
+  function rangePercent(price, low, high) { if (high <= low) return 50; return Math.min(100, Math.max(0, ((price-low)/(high-low))*100)); }
+  function severityPercent(item) {
+    if (item.changeSinceLastSeenPct === null || item.changeSinceLastSeenPct === undefined) return 0;
+    const threshold = item.thresholdPercent || 1.5;
+    return Math.min(100, Math.round((Math.abs(item.changeSinceLastSeenPct)/(threshold*2))*100));
+  }
+  function severityColor(pct) { if (pct < 40) return '#F0B429'; if (pct < 75) return '#E8862B'; return '#E0453A'; }
+
+  function renderTicker(items) {
+    if (items.length === 0) { tickerTrackEl.innerHTML = ''; return; }
+    const build = () => items.map(i => {
+      const cls = i.dayChangePercent >= 0 ? 'up' : 'down';
+      const arrow = i.dayChangePercent >= 0 ? '▲' : '▼';
+      return `<span class="ticker-item ${cls}"><span class="sym">${i.symbol}</span>$${fmtPrice(i.currentPrice)} ${arrow} ${fmtPct(i.dayChangePercent)}</span>`;
+    }).join('');
+    tickerTrackEl.innerHTML = build() + build();
+  }
+
+  function renderTopStats(items) {
+    const meaningfulCount = items.filter(i => i.meaningfulChange).length;
+    const gainers = items.filter(i => i.dayChangePercent > 0).length;
+    const losers = items.filter(i => i.dayChangePercent < 0).length;
+    topbarStatsEl.innerHTML = `
+      <div class="stat"><b style="color:${meaningfulCount>0?'var(--amber)':'var(--text)'}">${meaningfulCount}</b><span>Signals</span></div>
+      <div class="stat"><b>${items.length}</b><span>Tracked</span></div>
+      <div class="stat"><b class="up">${gainers}</b><span>Up</span></div>
+      <div class="stat"><b class="down">${losers}</b><span>Down</span></div>
+    `;
+  }
+
+  async function selectSymbol(symbol) {
+    selectedSymbol = symbol;
+    renderGridSelection();
+    const item = latestItems.find(i => i.symbol === symbol);
+    if (!item) return;
+    renderDetailPanel(item, null);
+    try {
+      const res = await fetch(`/api/watchlist/history/${symbol}`);
+      const history = res.ok ? await res.json() : [];
+      renderDetailPanel(item, history);
+    } catch (e) { /* chart is a bonus - fail silently, panel still shows without it */ }
+  }
+
+  function renderGridSelection() {
+    document.querySelectorAll('.grid-row').forEach(r => {
+      r.classList.toggle('selected', r.dataset.symbol === selectedSymbol);
+    });
+  }
+
+  function buildSparkline(history, up) {
+    if (!history || history.length < 2) return '<div class="chart-label" style="justify-content:center; padding-top:30px;">Not enough history yet to chart</div>';
+    const prices = history.map(p => p[1]);
+    const min = Math.min(...prices), max = Math.max(...prices);
+    const w = 280, h = 80;
+    const pts = history.map((p, i) => {
+      const x = (i / (history.length - 1)) * w;
+      const y = h - ((p[1] - min) / (max - min || 1)) * h;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const color = up ? 'var(--up)' : 'var(--down)';
+    const areaPts = `0,${h} ${pts} ${w},${h}`;
+    return `
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <polygon points="${areaPts}" fill="${color}" opacity="0.08"></polygon>
+        <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+      </svg>
+    `;
+  }
+
+  function renderDetailPanel(item, history) {
+    const dayCls = item.dayChangePercent >= 0 ? 'up' : 'down';
+    const arrow = item.dayChangePercent >= 0 ? '▲' : '▼';
+    const sev = severityPercent(item);
+    const sevColor = item.meaningfulChange ? severityColor(sev) : 'var(--text-muted)';
+    const yearPos = rangePercent(item.currentPrice, item.fiftyTwoWeekLow, item.fiftyTwoWeekHigh);
+    const chartHtml = history === null
+      ? '<div class="chart-label" style="justify-content:center; padding-top:30px;">Loading chart…</div>'
+      : buildSparkline(history, item.dayChangePercent >= 0);
+
+    detailPanel.innerHTML = `
+      <div class="detail-sym">${item.symbol}</div>
+      <div class="detail-name">${item.displayName || ''}</div>
+      <div class="detail-price">$${fmtPrice(item.currentPrice)}</div>
+      <div class="detail-change ${dayCls}">${arrow} ${fmtPct(item.dayChangePercent)} today</div>
+
+      <div class="chart-wrap">${chartHtml}</div>
+      <div class="chart-label"><span>30 days ago</span><span>Today</span></div>
+
+      <div class="detail-signal">
+        <div class="detail-gauge-row">
+          <div class="detail-gauge" style="--pct:${sev}; --gc:${sevColor}"><div class="in">${sev}%</div></div>
+          <div class="reason">${item.reason}</div>
+        </div>
+      </div>
+
+      <div class="detail-52w">
+        <div class="chart-label"><span>52-week range</span></div>
+        <div class="range-labels-d"><span>$${fmtPrice(item.fiftyTwoWeekLow)}</span><span>$${fmtPrice(item.fiftyTwoWeekHigh)}</span></div>
+        <div class="range-track-d"><div class="range-fill-d" style="left:${yearPos}%"></div></div>
+      </div>
+    `;
+  }
+
+  function renderGridRow(item, index, attnFlag) {
+    const dayCls = item.dayChangePercent >= 0 ? 'up' : 'down';
+    const arrow = item.dayChangePercent >= 0 ? '▲' : '▼';
+    const sev = severityPercent(item);
+    const sevColor = severityColor(sev);
+    const changed = lastPrices[item.symbol] !== undefined && lastPrices[item.symbol] !== item.currentPrice;
+    lastPrices[item.symbol] = item.currentPrice;
+    const yearPos = rangePercent(item.currentPrice, item.fiftyTwoWeekLow, item.fiftyTwoWeekHigh);
+    const moverBadge = item.moverRank ? `<span class="mover-badge">#${item.moverRank}</span>` : '';
+    const staleBadge = item.stale ? `<span class="stale-badge">cached</span>` : '';
+    const isSelected = item.symbol === selectedSymbol;
+
+    const rowClass = `grid-row ${attnFlag ? 'attn' : ''} ${changed ? 'flash' : ''} ${isSelected ? 'selected' : ''}`;
+    const rowStyle = attnFlag ? `style="--row-accent:${sevColor}; --row-glow:${sevColor}22; animation-delay:${index*0.03}s"` : `style="animation-delay:${index*0.03}s"`;
+
+    return `
+      <div class="${rowClass}" ${rowStyle} data-symbol="${item.symbol}" onclick="selectSymbol('${item.symbol}')">
+        <div class="gauge-mini" style="--pct:${sev}; --gc:${attnFlag ? sevColor : 'var(--text-muted)'}"><div class="dot"></div></div>
+        <div class="sym-cell">
+          <span class="sym">${item.symbol}</span>
+          <span class="nm">${item.displayName || ''}</span>
+          <div class="badges">${moverBadge}${staleBadge}</div>
+        </div>
+        <div class="cell-num">$${fmtPrice(item.currentPrice)}</div>
+        <div class="cell-pct ${dayCls}">${arrow} ${fmtPct(item.dayChangePercent)}</div>
+        <div class="range-mini">
+          <span class="lbl">52W</span>
+          <div class="range-track-mini"><div class="range-fill-mini" style="left:${yearPos}%"></div></div>
+        </div>
+        <div class="reason-cell">${item.reason}</div>
+        <button class="remove-btn" onclick="removeSymbol('${item.symbol}', event)">×</button>
+      </div>
+    `;
+  }
+
+  function sortItems(items) {
+    return [...items].sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+      return sortDir * ((av||0) - (bv||0));
+    });
+  }
+
+  function render(items) {
+    latestItems = items;
+    renderTicker(items);
+    renderTopStats(items);
+
+    if (items.length === 0) {
+      const stillSeeding = !localStorage.getItem(SEED_KEY);
+      contentEl.innerHTML = stillSeeding
+        ? `<div class="empty-state">Setting up your dashboard with a few popular stocks…</div>`
+        : `<div class="empty-state">Your watchlist is empty. Add a symbol above to get started.</div>`;
+      detailPanel.innerHTML = `<div class="detail-empty">Add a stock to see its chart and signal detail here.</div>`;
+      return;
+    }
+
+    if (!selectedSymbol || !items.find(i => i.symbol === selectedSymbol)) {
+      selectSymbol(items[0].symbol);
+    }
+
+    const meaningful = sortItems(items.filter(i => i.meaningfulChange));
+    const quiet = sortItems(items.filter(i => !i.meaningfulChange));
+
+    const header = `
+      <div class="grid-header">
+        <span></span>
+        <span onclick="setSort('symbol')" class="${sortKey==='symbol'?'sort-active':''}">SYMBOL</span>
+        <span onclick="setSort('currentPrice')" class="${sortKey==='currentPrice'?'sort-active':''}" style="text-align:right">PRICE</span>
+        <span onclick="setSort('dayChangePercent')" class="${sortKey==='dayChangePercent'?'sort-active':''}" style="text-align:right">TODAY</span>
+        <span>52W</span>
+        <span>SIGNAL</span>
+        <span></span>
+      </div>
+    `;
+
+    let html = `<div class="grid-wrap">${header}`;
+    if (meaningful.length > 0) {
+      html += `<div class="section-tag attn-tag">Needs your attention · ${meaningful.length}</div>`;
+      html += meaningful.map((i, idx) => renderGridRow(i, idx, true)).join('');
+    }
+    html += `<div class="section-tag">Everything else · ${quiet.length}</div>`;
+    html += quiet.length > 0 ? quiet.map((i, idx) => renderGridRow(i, idx, false)).join('') : `<div class="empty-state">Nothing quiet to show yet.</div>`;
+    html += `</div>`;
+
+    contentEl.innerHTML = html;
+    refreshNote.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  function setSort(key) {
+    if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = -1; }
+    render(latestItems);
+  }
+
+  async function loadWatchlist() {
+    try {
+      const res = await fetch('/api/watchlist', { headers: { 'X-User-Id': userId } });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed to load watchlist');
+      render(await res.json());
+    } catch (e) { showError(e.message); }
+  }
+
+  async function addSymbol() {
+    const symbol = symbolInput.value.trim();
+    if (!symbol) return;
+    addBtn.disabled = true; addBtn.textContent = 'Adding…';
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+        body: JSON.stringify({ symbol })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Could not add symbol');
+      symbolInput.value = ''; await loadWatchlist();
+    } catch (e) { showError(e.message); }
+    finally { addBtn.disabled = false; addBtn.textContent = 'Add'; }
+  }
+
+  async function removeSymbol(symbol, event) {
+    event.stopPropagation();
+    try {
+      await fetch(`/api/watchlist/${symbol}`, { method: 'DELETE', headers: { 'X-User-Id': userId } });
+      delete lastPrices[symbol];
+      if (selectedSymbol === symbol) selectedSymbol = null;
+      await loadWatchlist();
+    } catch (e) { showError('Could not remove symbol'); }
+  }
+
+  addBtn.addEventListener('click', addSymbol);
+  symbolInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSymbol(); });
+
+  // First-ever visit: seed with popular stocks so the app opens looking
+  // like a live, populated dashboard instead of an empty box waiting for
+  // input - matches how real trading platforms greet a new user.
+  const SEED_KEY = 'smart-watchlist-seeded';
+  const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'TSLA', 'GOOGL', 'RELIANCE.NS', 'TCS.NS'];
+
+  async function seedDefaultsIfFirstVisit() {
+    if (localStorage.getItem(SEED_KEY)) return;
+    localStorage.setItem(SEED_KEY, 'true');
+    for (const sym of DEFAULT_SYMBOLS) {
+      try {
+        await fetch('/api/watchlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+          body: JSON.stringify({ symbol: sym })
+        });
+      } catch (e) { /* if one fails (e.g. rate limit), the rest still try */ }
+    }
+    await loadWatchlist();
+  }
+
+  (async () => {
+    await loadWatchlist();
+    await seedDefaultsIfFirstVisit();
+  })();
+  setInterval(loadWatchlist, 30000);
+</script>
+</body>
+</html>
